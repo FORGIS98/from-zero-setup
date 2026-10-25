@@ -171,7 +171,7 @@
 
         - name: Clone or update the from-zero-config repository
           ansible.builtin.git:
-            repo: 'git@github.com:FORGIS98/from-zero-config.git'
+            repo: 'https://github.com/FORGIS98/from-zero-config.git'
             dest: "{{ setup_user_home }}/forgis98/from-zero-config"
             version: main
             update: true
