@@ -1,0 +1,6 @@
+jq
+python
+tree
+bat
+neovim
+chezmoi

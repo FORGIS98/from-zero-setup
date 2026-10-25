@@ -1,0 +1,194 @@
+---
+- name: Provision Arch Linux workstation
+  hosts: localhost
+  connection: local
+  become: true
+  gather_facts: true
+
+  vars:
+    setup_user: >-
+      {{ lookup('env', 'SUDO_USER')
+         | default(lookup('env', 'USER'), true)
+         | default(ansible_facts['user_id'], true) }}
+    official_package_files:
+      - pkglists/base.txt
+      - pkglists/gui.txt
+      - pkglists/cli.txt
+      - pkglists/window-manager.txt
+    yay_binary_paths:
+      - /usr/bin/yay
+      - /sbin/yay
+
+  tasks:
+    - name: Ensure Ansible is running as a non-root user
+      ansible.builtin.assert:
+        that:
+          - setup_user != 'root'
+        fail_msg: Run ansible-playbook as a regular user and use --ask-become-pass.
+
+    - name: Resolve the setup user's home directory
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ setup_user }}"
+
+    - name: Set the setup user's home directory
+      ansible.builtin.set_fact:
+        setup_user_home: "{{ ansible_facts['getent_passwd'][setup_user][4] }}"
+
+    - name: Read official package lists
+      ansible.builtin.set_fact:
+        official_packages: >-
+          {{
+            official_packages | default([])
+            + (
+              lookup('ansible.builtin.file', playbook_dir ~ '/' ~ item)
+              .splitlines()
+              | map('trim')
+              | reject('equalto', '')
+              | reject('match', '^#')
+              | list
+            )
+          }}
+      loop: "{{ official_package_files }}"
+
+    - name: Install official packages
+      community.general.pacman:
+        name: "{{ official_packages }}"
+        state: present
+        update_cache: true
+
+    - name: Enable Ly on tty1 at boot
+      ansible.builtin.systemd_service:
+        name: ly@tty1.service
+        enabled: true
+
+    - name: Read AUR package list
+      ansible.builtin.set_fact:
+        aur_packages: >-
+          {{
+            lookup('ansible.builtin.file', playbook_dir ~ '/pkglists/aur.txt')
+            .splitlines()
+            | map('trim')
+            | reject('equalto', '')
+            | reject('match', '^#')
+            | list
+          }}
+
+    - name: Create temporary sudoers rule for pacman
+      ansible.builtin.copy:
+        dest: /etc/sudoers.d/11-yay-ansible
+        content: "{{ setup_user }} ALL=(root) NOPASSWD: /usr/bin/pacman\n"
+        owner: root
+        group: root
+        mode: '0440'
+        validate: 'visudo -cf %s'
+
+    - name: Install AUR packages and revoke temporary sudo access
+      block:
+        - name: Check for yay binaries
+          ansible.builtin.stat:
+            path: "{{ item }}"
+          loop: "{{ yay_binary_paths }}"
+          register: yay_binary_stats
+
+        - name: Set yay binary path
+          ansible.builtin.set_fact:
+            yay_binary: >-
+              {{
+                '/usr/bin/yay'
+                if yay_binary_stats.results[0].stat.exists
+                else (
+                  '/sbin/yay'
+                  if yay_binary_stats.results[1].stat.exists
+                  else '/usr/bin/yay'
+                )
+              }}
+
+        - name: Ensure the yay build directory belongs to the Ansible user
+          ansible.builtin.file:
+            path: /tmp/yay
+            state: directory
+            owner: "{{ setup_user }}"
+            mode: '0755'
+            recurse: true
+          when: not (yay_binary_stats.results | selectattr('stat.exists') | list | length > 0)
+
+        - name: Clone yay repository
+          ansible.builtin.git:
+            repo: https://aur.archlinux.org/yay.git
+            dest: /tmp/yay
+            version: master
+            update: true
+          become: false
+          when: not (yay_binary_stats.results | selectattr('stat.exists') | list | length > 0)
+
+        - name: Build and install yay without root privileges
+          ansible.builtin.command:
+            argv:
+              - makepkg
+              - -si
+              - --noconfirm
+            chdir: /tmp/yay
+            creates: /usr/bin/yay
+          become: false
+          when: not (yay_binary_stats.results | selectattr('stat.exists') | list | length > 0)
+
+        - name: Install AUR packages without root privileges
+          ansible.builtin.command:
+            argv: "{{ [yay_binary, '-S', '--needed', '--noconfirm'] + aur_packages }}"
+          become: false
+          register: aur_install_result
+          changed_when: "'there is nothing to do' not in (aur_install_result.stdout | lower)"
+          when: aur_packages | length > 0
+
+      always:
+        - name: Remove temporary sudoers rule
+          ansible.builtin.file:
+            path: /etc/sudoers.d/11-yay-ansible
+            state: absent
+
+    - name: Prepare Chezmoi and apply dotfiles
+      become: false
+      block:
+        - name: Create the base directory for FORIGS98 repositories
+          ansible.builtin.file:
+            path: "{{ setup_user_home }}/forgis98"
+            state: directory
+            mode: '0755'
+
+        - name: Create the Chezmoi configuration directory
+          ansible.builtin.file:
+            path: "{{ setup_user_home }}/.config/chezmoi"
+            state: directory
+            mode: '0755'
+
+        - name: Configure Chezmoi source directory
+          ansible.builtin.copy:
+            dest: "{{ setup_user_home }}/.config/chezmoi/chezmoi.toml"
+            content: |
+              sourceDir = "{{ setup_user_home }}/forgis98/from-zero-config"
+            mode: '0644'
+
+        - name: Clone or update the from-zero-config repository
+          ansible.builtin.git:
+            repo: 'git@github.com:FORGIS98/from-zero-config.git'
+            dest: "{{ setup_user_home }}/forgis98/from-zero-config"
+            version: main
+            update: true
+
+        - name: Check for pending dotfile changes
+          ansible.builtin.command:
+            argv:
+              - chezmoi
+              - diff
+          register: chezmoi_diff
+          changed_when: false
+
+        - name: Apply dotfiles with Chezmoi
+          ansible.builtin.command:
+            argv:
+              - chezmoi
+              - apply
+              - --force
+          when: chezmoi_diff.stdout | length > 0
+          changed_when: chezmoi_diff.stdout | length > 0

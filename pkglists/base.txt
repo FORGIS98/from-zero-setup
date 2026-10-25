@@ -1,0 +1,5 @@
+git
+zsh
+ly
+base-devel
+sudo
