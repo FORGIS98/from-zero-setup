@@ -62,6 +62,20 @@
         name: ly@tty1.service
         enabled: true
 
+    - name: Deploy Ly configuration
+      ansible.builtin.copy:
+        src: files/ly/config.ini
+        dest: /etc/ly/config.ini
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Restart ly
+
+    - name: Enable ly.service
+      ansible.builtin.systemd:
+        name: ly.service
+        enabled: true
+
     - name: Read AUR package list
       ansible.builtin.set_fact:
         aur_packages: >-
@@ -192,3 +206,9 @@
               - --force
           when: chezmoi_diff.stdout | length > 0
           changed_when: chezmoi_diff.stdout | length > 0
+
+  handlers:
+    - name: Restart ly
+      ansible.builtin.systemd:
+        name: ly.service
+        state: restarted

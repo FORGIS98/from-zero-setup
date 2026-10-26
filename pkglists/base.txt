@@ -3,3 +3,4 @@ zsh
 ly
 base-devel
 sudo
+kitty
