@@ -6,3 +6,4 @@ neovim
 chezmoi
 feh
 rofi
+zsh-completions

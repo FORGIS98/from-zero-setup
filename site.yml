@@ -76,11 +76,6 @@
         mode: '0644'
       notify: Restart ly
 
-    - name: Enable ly.service
-      ansible.builtin.systemd:
-        name: ly.service
-        enabled: true
-
     - name: Read AUR package list
       ansible.builtin.set_fact:
         aur_packages: >-
@@ -252,9 +247,3 @@
             line: 'source "$ZSH/oh-my-zsh.sh"'
             regexp: '^\s*(source|\.)\s+.*oh-my-zsh\.sh\s*$'
             mode: '0644'
-
-  handlers:
-    - name: Restart ly
-      ansible.builtin.systemd:
-        name: ly.service
-        state: restarted
