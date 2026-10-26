@@ -57,6 +57,11 @@
         state: present
         update_cache: true
 
+    - name: Set the setup user's login shell to Zsh
+      ansible.builtin.user:
+        name: "{{ setup_user }}"
+        shell: /usr/bin/zsh
+
     - name: Enable Ly on tty1 at boot
       ansible.builtin.systemd_service:
         name: ly@tty1.service
@@ -206,6 +211,47 @@
               - --force
           when: chezmoi_diff.stdout | length > 0
           changed_when: chezmoi_diff.stdout | length > 0
+
+    - name: Install and configure Oh My Zsh for the setup user
+      become: false
+      block:
+        - name: Clone or update the Oh My Zsh repository
+          ansible.builtin.git:
+            repo: https://github.com/ohmyzsh/ohmyzsh.git
+            dest: "{{ setup_user_home }}/.oh-my-zsh"
+            version: master
+            update: true
+
+        - name: Install the zsh-autosuggestions plugin
+          ansible.builtin.git:
+            repo: https://github.com/zsh-users/zsh-autosuggestions.git
+            dest: "{{ setup_user_home }}/.oh-my-zsh/custom/plugins/zsh-autosuggestions"
+            version: master
+            update: true
+
+        - name: Install the zsh-syntax-highlighting plugin
+          ansible.builtin.git:
+            repo: https://github.com/zsh-users/zsh-syntax-highlighting.git
+            dest: "{{ setup_user_home }}/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting"
+            version: master
+            update: true
+
+        - name: Configure Oh My Zsh and its plugins
+          ansible.builtin.blockinfile:
+            path: "{{ setup_user_home }}/.zshrc"
+            create: true
+            mode: '0644'
+            insertbefore: '^\s*(source|\.)\s+.*oh-my-zsh\.sh\s*$'
+            block: |
+              export ZSH="{{ setup_user_home }}/.oh-my-zsh"
+              plugins=(git ssh-agent zsh-autosuggestions zsh-syntax-highlighting)
+
+        - name: Ensure Oh My Zsh is sourced
+          ansible.builtin.lineinfile:
+            path: "{{ setup_user_home }}/.zshrc"
+            line: 'source "$ZSH/oh-my-zsh.sh"'
+            regexp: '^\s*(source|\.)\s+.*oh-my-zsh\.sh\s*$'
+            mode: '0644'
 
   handlers:
     - name: Restart ly
