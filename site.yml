@@ -74,7 +74,6 @@
         owner: root
         group: root
         mode: '0644'
-      notify: Restart ly
 
     - name: Read AUR package list
       ansible.builtin.set_fact:
