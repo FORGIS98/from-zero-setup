@@ -7,3 +7,6 @@ chezmoi
 feh
 rofi
 zsh-completions
+grim
+slurp
+wl-clipboard

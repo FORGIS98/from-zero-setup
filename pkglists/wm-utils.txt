@@ -1,0 +1,10 @@
+i3lock
+i3blocks
+i3status
+swaylock
+swayidle
+hyprlock
+hypridle
+hyprpaper
+waybar
+polkit-kde-agent

@@ -15,6 +15,8 @@
       - pkglists/gui.txt
       - pkglists/cli.txt
       - pkglists/window-manager.txt
+      - pkglists/wayland-graphics.txt
+      - pkglists/wm-utils.txt
     yay_binary_paths:
       - /usr/bin/yay
       - /sbin/yay
