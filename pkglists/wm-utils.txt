@@ -8,3 +8,4 @@ hypridle
 hyprpaper
 waybar
 polkit-kde-agent
+awww
